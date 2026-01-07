@@ -49,6 +49,7 @@ class Announcement(Base):
     pin_message = Column(Integer, default=0)      # 0/1
     notify_all = Column(Integer, default=1)       # 0/1
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    sent_at = Column(DateTime, nullable=True)     # ✅ yangi ustun
 
 # ==============================
 # PYDANTIC MODELS
@@ -123,7 +124,6 @@ def get_month_range(dt: datetime):
     return start.date(), end.date()
 
 def get_week_saturday_to_friday(today: datetime):
-    # Monday=0 ... Sunday=6; Saturday=5
     delta_to_saturday = (today.weekday() - 5) % 7
     start = (today - timedelta(days=delta_to_saturday)).date()
     end = start + timedelta(days=6)
@@ -217,7 +217,6 @@ async def get_users_need_reminder(db: Session = Depends(get_db)):
     now_hhmm = datetime.now().strftime("%H:%M")
     users = db.query(User).filter(User.reminder_time == now_hhmm).all()
     return [{"telegram_id": u.telegram_id, "first_name": u.first_name} for u in users]
-
 # ==============================
 # READING LOGS
 # ==============================
@@ -263,6 +262,7 @@ async def delete_reading_log(date: str, telegram_id: int, db: Session = Depends(
     db.commit()
     return {"message": "Reading log deleted"}
 
+
 # ==============================
 # LEADERBOARD
 # ==============================
@@ -305,6 +305,7 @@ async def leaderboard(period: str = "week", limit: int = 10, db: Session = Depen
 # ==============================
 # REPORTS
 # ==============================
+
 @app.get("/api/report/week")
 async def weekly_report(db: Session = Depends(get_db)):
     """
@@ -354,9 +355,11 @@ async def monthly_report(db: Session = Depends(get_db)):
         report.append({"rank": idx, "name": name, "pages": pages})
     return report
 
+
 # ==============================
 # STATS (ADMIN DASHBOARD)
 # ==============================
+
 @app.get("/api/stats")
 async def get_stats(db: Session = Depends(get_db)):
     total_users = db.query(User).count()
@@ -384,6 +387,7 @@ async def get_stats(db: Session = Depends(get_db)):
 # ==============================
 # WEEKLY ACTIVITY (ADMIN DASHBOARD)
 # ==============================
+
 @app.get("/api/activity/weekly")
 async def weekly_activity(db: Session = Depends(get_db)):
     today = datetime.now().date()
@@ -396,12 +400,12 @@ async def weekly_activity(db: Session = Depends(get_db)):
         data.append({"Day": day.strftime("%a"), "Pages": int(pages), "Users": int(users)})
     return data
 
+
 # ==============================
 # ANNOUNCEMENTS (ADMIN DASHBOARD)
 # ==============================
 @app.post("/api/announcements")
 async def create_announcement(data: Dict[str, Any], admin_id: int, db: Session = Depends(get_db)):
-    # You can validate admin_id against a Users table with status='admin' if needed
     ann = Announcement(
         message=data.get("message", ""),
         message_type=data.get("message_type", "general"),
@@ -417,7 +421,24 @@ async def create_announcement(data: Dict[str, Any], admin_id: int, db: Session =
 @app.get("/api/announcements")
 async def list_announcements(db: Session = Depends(get_db)):
     anns = db.query(Announcement).order_by(Announcement.created_at.desc()).limit(20).all()
-    return [{"id": a.id, "message": a.message, "created_at": a.created_at.isoformat()} for a in anns]
+    return [
+        {
+            "id": a.id,
+            "message": a.message,
+            "created_at": a.created_at.isoformat(),
+            "sent_at": a.sent_at.isoformat() if a.sent_at else None
+        } for a in anns
+    ]
+
+# ✅ Qo‘shimcha endpoint: e’lonni yuborilgan deb belgilash
+@app.put("/api/announcements/{announcement_id}/mark-sent")
+async def mark_announcement_sent(announcement_id: int, db: Session = Depends(get_db)):
+    ann = db.query(Announcement).filter(Announcement.id == announcement_id).first()
+    if not ann:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    ann.sent_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"message": "Announcement marked as sent", "id": ann.id}
 
 # ==============================
 # DEV SERVER

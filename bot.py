@@ -326,24 +326,30 @@ async def send_announcements(application):
         announcements = response.json()
         if not announcements:
             return
-        latest = announcements[0]  # eng so‘nggi e’lon
-        message = latest["message"]
 
-        # Guruhga yuborish (o‘zingning group_id ni qo‘y)
-        group_id = -1002184957543
-        await application.bot.send_message(chat_id=group_id, text=f"📢 {message}")
+        for ann in announcements:
+            # faqat yuborilmagan e’lonlar
+            if ann.get("sent_at") is None:
+                message = ann["message"]
 
-        # Har bir foydalanuvchiga yuborish
-        # (foydalanuvchilar ro‘yxatini API’dan olish mumkin)
-        users = requests.get(f"{API_URL}/users").json()
-        for u in users:
-            try:
-                await application.bot.send_message(chat_id=u["telegram_id"], text=f"📢 {message}")
-            except Exception as e:
-                print(f"Failed to send to {u['telegram_id']}: {e}")
+                # Guruhga yuborish
+                group_id = -1002184957543  # o‘zingning guruh ID
+                await application.bot.send_message(chat_id=group_id, text=f"📢 {message}")
+
+                # Har bir foydalanuvchiga yuborish
+                users = requests.get(f"{API_URL}/users").json()
+                for u in users:
+                    try:
+                        await application.bot.send_message(chat_id=u["telegram_id"], text=f"📢 {message}")
+                    except Exception as e:
+                        print(f"Failed to send to {u['telegram_id']}: {e}")
+
+                # ✅ API’da e’lonni yuborilgan deb belgilash
+                requests.put(f"{API_URL}/announcements/{ann['id']}/mark-sent", json={})
 
     except Exception as e:
         print("Error fetching announcements:", e)
+
 
 
 # =============================================================================
